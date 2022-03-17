@@ -24,10 +24,11 @@ def squash_sin(m, s, max_action=None):
 
     lq = -0.5 * (jnp.diag(s)[:, None] + jnp.diag(s)[None, :])
     q = jnp.exp(lq)
-    S = (jnp.exp(lq + s) - q) * jnp.cos(jnp.transpose(m) - m) - (
-        jnp.exp(lq - s) - q
-    ) * jnp.cos(jnp.transpose(m) + m)
-    S = 0.5 * max_action * jnp.transpose(max_action) * S
+    mT = jnp.transpose(m, (1, 0))
+    S = (jnp.exp(lq + s) - q) * jnp.cos(mT - m) - (jnp.exp(lq - s) - q) * jnp.cos(
+        mT + m
+    )
+    S = 0.5 * max_action * jnp.transpose(max_action, (1, 0)) * S
 
     C = max_action * objax.Vectorize(lambda x: jnp.diag(x, k=0), objax.VarCollection())(
         jnp.exp(-0.5 * jnp.diag(s)) * jnp.cos(m)
@@ -48,10 +49,11 @@ class LinearController(objax.Module):
         IN: mean (m) and variance (s) of the state
         OUT: mean (M) and variance (S) of the action
         """
-        WT = jnp.transpose(self.W)
-        M = m @ WT + self.b  # mean output
-        S = self.W @ s @ WT  # output variance
-        V = jnp.transpose(self.W)  # input output covariance
+
+        WT = jnp.transpose(self.W.value, (1, 0))
+        M = m @ WT + self.b.value  # mean output
+        S = self.W.value @ s @ WT  # output variance
+        V = WT  # input output covariance
         if squash:
             M, S, V2 = squash_sin(M, S, self.max_action)
             V = V @ V2
@@ -60,8 +62,8 @@ class LinearController(objax.Module):
     def randomize(self):
         mean = 0
         sigma = 1
-        self.W.assign(mean + sigma * objax.random.normal(size=self.W.shape))
-        self.b.assign(mean + sigma * objax.random.normal(size=self.b.shape))
+        self.W.assign(mean + sigma * objax.random.normal(self.W.shape))
+        self.b.assign(mean + sigma * objax.random.normal(self.b.shape))
 
 
 # class FakeGPR(gpflow.Module):
@@ -141,14 +143,14 @@ class RbfController(MGPR):
         return M, S, V
 
     def randomize(self):
-        print("Randomising controller")
+        print("Randomizing controller")
         for m in self.models:
             m.X.assign(objax.random.normal(m.data[0].shape))
-            m.Y.assign(0.1 * self.max_action * np.random.normal(size=m.data[1].shape))
+            m.Y.assign(0.1 * self.max_action * objax.random.normal(m.data[1].shape))
             mean = 1
             sigma = 0.1
             m.kernel.transformed_lengthscale.assign(
                 softplus_inv(
-                    mean + sigma * np.random.normal(size=m.kernel.lengthscales.shape)
+                    mean + sigma * objax.random.normal(m.kernel.lengthscales.shape)
                 )
             )

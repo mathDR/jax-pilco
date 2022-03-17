@@ -78,6 +78,9 @@ class MGPR:
                         )
                     )
                 )
+            for optimizer in self.optimizers:
+                for i in range(maxiter):
+                    optimizer()
         else:
             for optimizer in self.optimizers:
                 for i in range(maxiter):
@@ -148,9 +151,7 @@ class MGPR:
         # Redefine iN as in^T and t --> t^T
         # B is symmetric so its the same
         t = jnp.transpose(
-            objax.Vectorize(lambda a, b: jnp.linalg.solve(a, b), objax.VarCollection())(
-                B, jnp.transpose(iN, axes=(0, 2, 1))
-            ),
+            jnp.linalg.solve(B, jnp.transpose(iN, axes=(0, 2, 1))),
             axes=(0, 2, 1),
         )
 
@@ -163,10 +164,11 @@ class MGPR:
 
         # Calculate S: Predictive Covariance
         z = objax.Vectorize(
-            objax.Vectorize(lambda x: jnp.diag(x, k=0), objax.VarCollection())(
-                1.0 / jnp.square(self.lengthscales[None, :, :])
-                + 1.0 / jnp.square(self.lengthscales[:, None, :])
-            )
+            objax.Vectorize(lambda x: jnp.diag(x, k=0), objax.VarCollection()),
+            objax.VarCollection(),
+        )(
+            1.0 / jnp.square(self.lengthscales[None, :, :])
+            + 1.0 / jnp.square(self.lengthscales[:, None, :])
         )
 
         R = (s @ z) + jnp.eye(self.num_dims)
@@ -186,10 +188,9 @@ class MGPR:
 
         diagL = jnp.transpose(
             objax.Vectorize(
-                objax.Vectorize(lambda x: jnp.diag(x, k=0), objax.VarCollection())(
-                    jnp.transpose(L)
-                )
-            )
+                objax.Vectorize(lambda x: jnp.diag(x, k=0), objax.VarCollection()),
+                objax.VarCollection(),
+            )(jnp.transpose(L))
         )
         S = S - jnp.diag(jnp.sum(jnp.multiply(iK, diagL), [1, 2]))
         S = S / jnp.sqrt(jnp.linalg.det(R))

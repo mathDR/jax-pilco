@@ -1,9 +1,8 @@
 import jax.numpy as jnp
 import objax
-from jax.lax import while_loop
+from jax.lax import fori_loop
 
 import pandas as pd
-import numpy as np
 import time
 
 from .mgpr import MGPR
@@ -25,7 +24,7 @@ class PILCO:
         name=None,
     ):
         super(PILCO, self).__init__()
-        # TODO: add back SMGPR
+        # TODO: add back SMGPR?
         self.mgpr = MGPR(data)
 
         self.state_dim = data[1].shape[1]
@@ -69,9 +68,9 @@ class PILCO:
         variances = {}
         noises = {}
         for i, model in enumerate(self.mgpr.models):
-            lengthscales["GP" + str(i)] = np.array(model.kernel.lengthscale)
-            variances["GP" + str(i)] = np.array([np.array(model.kernel.variance)])
-            noises["GP" + str(i)] = np.array([np.array(model.likelihood.variance)])
+            lengthscales["GP" + str(i)] = jnp.array(model.kernel.lengthscale)
+            variances["GP" + str(i)] = jnp.array([jnp.array(model.kernel.variance)])
+            noises["GP" + str(i)] = jnp.array([jnp.array(model.likelihood.variance)])
 
         print("-----Learned models------")
         print("---Lengthscales---")
@@ -86,28 +85,45 @@ class PILCO:
         Optimize controller's parameter's
         """
         lr_adam = 0.1
-        lr_newton = 1.0
         if not self.optimizer:
+            opt_hypers = objax.optimizer.Adam(self.controller.vars())
+            energy = objax.GradValues(self.training_loss, self.controller.vars())
 
-            @objax.Function.with_vars(self.controller.vars())
-            def train_op():
-                dE, E = objax.GradValues(
-                    self.training_loss, self.controller.vars()
-                )()  # compute energy and its gradients w.r.t. hypers
-                objax.optimizer.Adam(self.controller.vars())(lr_adam, dE)
+            def train_op(en=energy, oh=opt_hypers):
+                dE, E = en()
+                oh(lr_adam, dE)
                 return E
 
-            train_op = objax.Jit(train_op)
-            self.optimizer = train_op
+            self.optimizer = objax.Jit(
+                objax.Function(
+                    train_op,
+                    self.controller.vars() + opt_hypers.vars(),
+                )
+            )
+
             for i in range(maxiter):
                 self.optimizer()
         else:
             for i in range(maxiter):
                 self.optimizer()
 
+        best_parameter_values = [jnp.array(param) for param in self.controller.vars()]
         best_reward = self.compute_reward()
 
-        # TODO: maybe reimplement restarts?
+        for restart in range(restarts):
+            self.controller.randomize()
+
+            for i in range(maxiter):
+                self.optimizer()
+            reward = self.compute_reward()
+            if reward > best_reward:
+                best_parameter_values = [
+                    jnp.array(param) for param in self.controller.vars()
+                ]
+                best_reward = reward
+
+        for i, param in enumerate(self.controller.vars()):
+            param.assign(best_parameter_values[i])
 
     def compute_action(self, x_m):
         return self.controller.compute_action(
@@ -115,35 +131,18 @@ class PILCO:
         )[0]
 
     def predict(self, m_x, s_x, n):
-        loop_vars = [0, m_x, s_x, jnp.array([[0.0]])]
+        init_val = (m_x, s_x, 0.0)
 
-        def cond_fun(val):
-            j, m_x, s_x, reward = val
-            return j < n
-
-        def body_fun(val):
-            j, m_x, s_x, reward = val
+        def body_fun(i, v):
+            m_x, s_x, reward = v
             return (
-                j + 1,
                 *self.propagate(m_x, s_x),
-                jnp.add(reward, self.reward.compute_reward(m_x, s_x)[0]),
+                jnp.add(reward, jnp.squeeze(self.reward.compute_reward(m_x, s_x)[0])),
             )
 
-        while_loop(
-            # Termination condition
-            cond_fun,
-            # Body function
-            body_fun,
-            loop_vars,
-        )
-        # while_loop(
-        #     # Termination condition
-        #     cond_fun,
-        #     # Body function
-        #     body_fun,
-        #     loop_vars,
-        # )
-        _, m_x, s_x, reward = loop_vars
+        val = fori_loop(0, n, body_fun, init_val)
+
+        m_x, s_x, reward = val
         return m_x, s_x, reward
 
     def propagate(self, m_x, s_x):
