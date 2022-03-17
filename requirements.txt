@@ -1,0 +1,7 @@
+jax
+jax-lib
+matplotlib
+pandas
+gym
+oct2py
+pytest
