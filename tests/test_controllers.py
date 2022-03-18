@@ -93,9 +93,10 @@ def test_linear():
     assert M.shape == M_mat.T.shape
     assert S.shape == S_mat.shape
     assert V.shape == V_mat.shape
-    # np.testing.assert_allclose(M, M_mat.T, rtol=1e-4)
-    assert jnp.allclose(S, S_mat, rtol=1e-4)
+    assert jnp.allclose(M, M_mat.T, rtol=1e-4)
     assert jnp.allclose(V, V_mat, rtol=1e-4)
+    # This last one fails -- need to understand why
+    assert jnp.allclose(S, S_mat, rtol=1e-4)
 
 
 def test_squash():

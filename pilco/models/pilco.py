@@ -11,7 +11,7 @@ from .. import controllers
 from .. import rewards
 
 
-class PILCO:
+class PILCO(objax.Module):
     def __init__(
         self,
         data,
@@ -21,11 +21,12 @@ class PILCO:
         reward=None,
         m_init=None,
         S_init=None,
+        trainable_likelihood_variance=True,
         name=None,
     ):
         super(PILCO, self).__init__()
         # TODO: add back SMGPR?
-        self.mgpr = MGPR(data)
+        self.mgpr = MGPR(data, trainable_likelihood_variance)
 
         self.state_dim = data[1].shape[1]
         self.control_dim = data[0].shape[1] - data[1].shape[1]
@@ -58,11 +59,11 @@ class PILCO:
         reward = self.predict(self.m_init, self.S_init, self.horizon)[2]
         return -reward
 
-    def optimize_models(self, restarts=1):
+    def optimize_models(self, maxiter=1000, restarts=1):
         """
         Optimize GP models
         """
-        self.mgpr.optimize(restarts=restarts)
+        self.mgpr.optimize(maxiter=maxiter, restarts=restarts)
         # ToDo: only do this if verbosity is large enough
         lengthscales = {}
         variances = {}

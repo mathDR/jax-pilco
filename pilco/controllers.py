@@ -145,12 +145,13 @@ class RbfController(MGPR):
     def randomize(self):
         print("Randomizing controller")
         for m in self.models:
-            m.X.assign(objax.random.normal(m.data[0].shape))
-            m.Y.assign(0.1 * self.max_action * objax.random.normal(m.data[1].shape))
-            mean = 1
+            m.X = jnp.array(objax.random.normal(m.X.shape))
+            m.Y = jnp.array(0.1 * self.max_action * objax.random.normal(m.Y.shape))
+
+            mean = 1.0
             sigma = 0.1
             m.kernel.transformed_lengthscale.assign(
                 softplus_inv(
-                    mean + sigma * objax.random.normal(m.kernel.lengthscales.shape)
+                    mean + sigma * objax.random.normal(m.kernel.lengthscale.shape)
                 )
             )

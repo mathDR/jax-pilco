@@ -13,8 +13,8 @@ env = gym.make("InvertedPendulum-v2")
 X, Y, _, _ = rollout(env=env, pilco=None, random=True, timesteps=40, render=True)
 for i in range(1, 5):
     X_, Y_, _, _ = rollout(env=env, pilco=None, random=True, timesteps=40, render=True)
-    X = np.vstack((X, X_))
-    Y = np.vstack((Y, Y_))
+    X = jnp.vstack((X, X_))
+    Y = jnp.vstack((Y, Y_))
 
 
 state_dim = Y.shape[1]
@@ -30,8 +30,8 @@ pilco = PILCO((X, Y), controller=controller, horizon=40)
 # pilco = PILCO(X, Y, controller=controller, horizon=40, reward=R)
 
 for rollouts in range(3):
-    pilco.optimize_models()
-    pilco.optimize_policy()
+    pilco.optimize_models(restarts=5)
+    pilco.optimize_policy(restarts=5)
 
     X_new, Y_new, _, _ = rollout(env=env, pilco=pilco, timesteps=100, render=True)
     # Update dataset

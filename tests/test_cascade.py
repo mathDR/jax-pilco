@@ -45,25 +45,23 @@ def test_cascade():
     # convert data to the struct expected by the MATLAB implementation
     policy = oct2py.io.Struct()
     policy.p = oct2py.io.Struct()
-    policy.p.w = pilco.controller.W.numpy()
-    policy.p.b = pilco.controller.b.numpy().T
+    policy.p.w = np.array(pilco.controller.W)
+    policy.p.b = np.array(pilco.controller.b).T
     policy.maxU = e
 
     # convert data to the struct expected by the MATLAB implementation
-    lengthscales = jnp.stack(
-        [np.array(model.kernel.lengthscales) for model in pilco.mgpr.models]
+    lengthscales = np.stack(
+        [np.array(model.kernel.lengthscale) for model in pilco.mgpr.models]
     )
-    variance = jnp.stack(
+    variance = np.stack(
         [np.array(model.kernel.variance) for model in pilco.mgpr.models]
     )
-    noise = jnp.stack(
+    noise = np.stack(
         [np.array(model.likelihood.variance) for model in pilco.mgpr.models]
     )
 
-    hyp = jnp.log(
-        jnp.hstack(
-            (lengthscales, jnp.sqrt(variance[:, None]), jnp.sqrt(noise[:, None]))
-        )
+    hyp = np.log(
+        np.hstack((lengthscales, np.sqrt(variance[:, None]), np.sqrt(noise[:, None])))
     ).T
 
     dynmodel = oct2py.io.Struct()
@@ -72,11 +70,11 @@ def test_cascade():
     dynmodel.targets = Y0
 
     plant = oct2py.io.Struct()
-    plant.angi = jnp.zeros(0)
-    plant.angi = jnp.zeros(0)
-    plant.poli = jnp.arange(d) + 1
-    plant.dyni = jnp.arange(d) + 1
-    plant.difi = jnp.arange(d) + 1
+    plant.angi = np.zeros(0)
+    plant.angi = np.zeros(0)
+    plant.poli = np.arange(d) + 1
+    plant.dyni = np.arange(d) + 1
+    plant.difi = np.arange(d) + 1
 
     # Call function in octave
     M_mat, S_mat = oc.pred(

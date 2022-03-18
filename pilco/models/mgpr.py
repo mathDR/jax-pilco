@@ -20,13 +20,20 @@ def randomize(model, mean=1, sigma=0.01):
         )
 
 
-class MGPR:
-    def __init__(self, data, fixed_parameters: bool = False, name=None):
+class MGPR(objax.Module):
+    def __init__(
+        self,
+        data,
+        trainable_likelihood_variance: bool = True,
+        fixed_parameters: bool = False,
+        name=None,
+    ):
         super(MGPR, self).__init__()
 
         self.num_outputs = data[1].shape[1]
         self.num_dims = data[0].shape[1]
         self.num_datapoints = data[0].shape[0]
+        self.trainable_likelihood_variance = trainable_likelihood_variance
         self.fixed_parameters = fixed_parameters
         self.create_models(data)
         self.optimizers = []
@@ -43,7 +50,7 @@ class MGPR:
             )
 
             lik = bayesnewton.likelihoods.Gaussian(
-                variance=0.01, fix_variance=self.fixed_parameters
+                variance=0.01, fix_variance=~self.trainable_likelihood_variance
             )
             self.models.append(
                 bayesnewton.models.VariationalGP(
@@ -52,10 +59,19 @@ class MGPR:
             )
 
     def set_data(self, data):
+        X_dim = self.models[0].X.shape
+        Y_dim = self.models[0].Y.shape
         for i in range(len(self.models)):
             self.models[i].X = jnp.array(data[0])
             self.models[i].Y = jnp.array(data[1][:, i : i + 1])
             self.models[i].data = [self.models[i].X, self.models[i].Y]
+        if (self.models[0].X.shape != X_dim) or (self.models[0].Y.shape != Y_dim):
+            # Need to rebuild GP
+            self.num_outputs = data[1].shape[1]
+            self.num_dims = data[0].shape[1]
+            self.num_datapoints = data[0].shape[0]
+            self.create_models(data)
+            self.optimizers = []
 
     def optimize(self, maxiter=1000, restarts=1):
         lr_adam = 0.1
