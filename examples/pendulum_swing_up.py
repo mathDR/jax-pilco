@@ -27,13 +27,27 @@ if __name__ == "__main__":
     N = 8
     restarts = 2
 
-    env = gym.make("Pendulum-v1").env
+    env = gym.make("Pendulum-v1")
 
     # Initial random rollouts to generate a dataset
-    X, Y, _, _ = rollout(env, None, timesteps=T, random=True, SUBS=SUBS, render=True)
+    X, Y, _, _ = rollout(
+        env=env,
+        pilco=None,
+        timesteps=T,
+        verbose=True,
+        random=True,
+        SUBS=SUBS,
+        render=True,
+    )
     for i in range(1, J):
         X_, Y_, _, _ = rollout(
-            env, None, timesteps=T, random=True, SUBS=SUBS, verbose=True, render=True
+            env=env,
+            pilco=None,
+            timesteps=T,
+            verbose=True,
+            random=True,
+            SUBS=SUBS,
+            render=True,
         )
         X = jnp.vstack((X, X_))
         Y = jnp.vstack((Y, Y_))
@@ -67,29 +81,18 @@ if __name__ == "__main__":
     r_new = []
     for rollouts in range(N):
         print("**** ITERATION no", rollouts, " ****")
-        pilco.optimize_models(maxiter=maxiter, restarts=2)
-        pilco.optimize_policy(maxiter=maxiter, restarts=2)
+        pilco.optimize_models(maxiter=maxiter, restarts=restarts)
+        pilco.optimize_policy(maxiter=maxiter, restarts=restarts)
         print("About to rollout")
-        # X_new, Y_new, _, _ = rollout(
-        #     env,
-        #     pilco,
-        #     timesteps=T_sim,
-        #     verbose=True,
-        #     random=False,
-        #     SUBS=SUBS,
-        #     render=True,
-        # )
-        X_new, Y_new, _, _ = rollout(env, pilco, timesteps=T_sim)
-
-        # Since we had decide on the various parameters of the reward function
-        # we might want to verify that it behaves as expected by inspection
-        # for i in range(len(X_new)):
-        #     r_new.append(
-        #         R.compute_reward(X_new[i, None, :-1], 0.001 * jnp.eye(state_dim))[0]
-        #     )
-        # total_r = sum(r_new)
-        # _, _, r = pilco.predict(X_new[0, None, :-1], 0.001 * S_init, T)
-        # print("Total ", total_r, " Predicted: ", r)
+        X_new, Y_new, _, _ = rollout(
+            env=env,
+            pilco=pilco,
+            timesteps=T_sim,
+            verbose=True,
+            random=False,
+            SUBS=SUBS,
+            render=True,
+        )
 
         # Update dataset
         X = jnp.vstack((X, X_new))

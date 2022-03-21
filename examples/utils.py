@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+import numpy as np
 from gym import make
 
 
@@ -13,7 +14,7 @@ def rollout(env, pilco, timesteps, verbose=True, random=False, SUBS=1, render=Fa
             env.render()
         u = policy(env, pilco, x, random)
         for i in range(SUBS):
-            x_new, r, done, _ = env.step(u)
+            x_new, r, done, _ = env.step(np.array(u))
             ep_return_full += r
             if done:
                 break
