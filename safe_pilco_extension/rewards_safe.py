@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 import objax
-from scipy.stats import multivariate_normal
+from scipy.stats import norm
 
 
 class RiskOfCollision(objax.Module):
@@ -10,30 +10,32 @@ class RiskOfCollision(objax.Module):
         self.low = low
         self.high = high
 
-    def compute_reward(self, m, s):
-        infl_diag_S = 2*objax.Vectorize(
-            objax.Vectorize(lambda x: jnp.diag(x, k=0), objax.VarCollection()),
-            objax.VarCollection(),
-            )(s)
+    def compute_reward(self, m, s, low, high):
+        infl_diag_S = jnp.diag(s, k=0)
 
-        dist1 = multivariate_normal(mean=m[0, 0], cov=infl_diag_S[0])
-        dist2 = multivariate_normal(mean=m[0, 2], cov=infl_diag_S[2])
+        dist1 = norm(loc=m[0, 0], scale=infl_diag_S[0])
+        dist2 = norm(loc=m[0, 2], scale=infl_diag_S[2])
+        # risk = (
+        #     dist1.cdf(self.high[0]) - dist1.cdf(self.low[0])
+        #     ) * (
+        #     dist2.cdf(self.high[1]) - dist2.cdf(self.low[1])
+        #     )
         risk = (
-            dist1.cdf(self.high[0]) - dist1.cdf(self.low[0])
+            dist1.cdf(high[0]) - dist1.cdf(low[0])
             ) * (
-            dist2.cdf(self.high[1]) - dist2.cdf(self.low[1])
-            )
-        return risk, 0.0001 * jnp.ones(1)
+            dist2.cdf(high[1]) - dist2.cdf(low[1])
+        )
+        return risk, 0.0001
 
 
 class SingleConstraint(objax.Module):
     def __init__(self, dim, high=None, low=None, inside=True):
         if high is None:
-            self.high = False
+            self.high = 1e9
         else:
             self.high = high
         if low is None:
-            self.low = False
+            self.low = -1e9
         else:
             self.low = low
         if high is None and low is None:
@@ -43,31 +45,17 @@ class SingleConstraint(objax.Module):
                 )
         self.dim = int(dim)
         if inside:
-            self.inside = True
+            self.inside = 1.0
         else:
-            self.inside = False
+            self.inside = 0.0
 
     def compute_reward(self, m, s):
         # Risk refers to the space between the low and high value -> 1
         # otherwise self.in = 0
-        if not self.high:
-            dist = multivariate_normal(
-                mean=m[0, self.dim], cov=s[self.dim, self.dim]
-            )
-            risk = 1 - dist.cdf(self.low)
-        elif not self.low:
-            dist = multivariate_normal(
-                mean=m[0, self.dim], cov=s[self.dim, self.dim]
-            )
-            risk = dist.cdf(self.high)
-        else:
-            dist = multivariate_normal(
-                mean=m[0, self.dim], cov=s[self.dim, self.dim]
-            )
-            risk = dist.cdf(self.high) - dist.cdf(self.low)
-        if not self.inside:
-            risk = 1 - risk
-        return risk, 0.0001 * jnp.ones(1)
+        dist = norm(loc=m[0, self.dim], scale=s[self.dim, self.dim])
+        risk = dist.cdf(self.high) - dist.cdf(self.low)
+        # TODO: add back inside somehow without breaking jit compile
+        return risk, 0.0001
 
 
 class ObjectiveFunction(objax.Module):
@@ -79,4 +67,4 @@ class ObjectiveFunction(objax.Module):
     def compute_reward(self, m, s):
         reward, var = self.reward_f.compute_reward(m, s)
         risk, _ = self.risk_f.compute_reward(m, s)
-        return reward - self.mu * risk, var
+        return reward - self.mu.value * risk, var

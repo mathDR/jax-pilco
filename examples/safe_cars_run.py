@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import objax
+from bayesnewton.utils import softplus_inv
 
 from pilco.controllers import RbfController
 from pilco.rewards import LinearReward
@@ -105,6 +106,8 @@ def safe_cars(seed=0):
 
     bound_x1 = 1 / env.std[0]
     bound_x2 = 1 / env.std[2]
+    low = [-bound_x1-env.m[0]/env.std[0], -bound_x2 - env.m[2] / env.std[2]]
+    high = [bound_x1 - env.m[0]/env.std[0], bound_x2 - env.m[2] / env.std[2]]
     B = RiskOfCollision(
         2,
         [-bound_x1-env.m[0]/env.std[0], -bound_x2 - env.m[2] / env.std[2]],
@@ -124,7 +127,9 @@ def safe_cars(seed=0):
     )
 
     for model in pilco.mgpr.models:
-        model.likelihood.variance.assign(0.001)
+        model.likelihood.transformed_variance.assign(
+            softplus_inv(0.001)
+        )
 
     # define tolerance
     new_data = True
@@ -139,17 +144,17 @@ def safe_cars(seed=0):
             new_data = False
         pilco.optimize_policy(maxiter=20, restarts=2)
         # check safety
-        m_p = jnp.zeros((T, state_dim))
-        S_p = jnp.zeros((T, state_dim, state_dim))
-        predicted_risks = jnp.zeros(T)
-        predicted_rewards = jnp.zeros(T)
+
+        predicted_risks = []
+        predicted_rewards = []
 
         for h in range(T):
-            m_h, S_h, _ = pilco.predict(m_init, S_init, h)
-            m_p[h, :], S_p[h, :, :] = m_h[:], S_h[:, :]
-            predicted_risks[h], _ = B.compute_reward(m_h, S_h)
-            predicted_rewards[h], _ = R1.compute_reward(m_h, S_h)
-        overall_risk = 1 - jnp.prod(1.0-predicted_risks)
+            m_h, S_h, _ = pilco.predict(m_init, S_init, h, low, high)
+            p_risk, _ = B.compute_reward(m_h, S_h)
+            predicted_risks.append(p_risk)
+            p_rew, _ = R1.compute_reward(m_h, S_h)
+            predicted_rewards.append(p_rew)
+        overall_risk = 1 - jnp.prod(1.0-jnp.array(predicted_risks))
 
         print("Predicted episode's return: ", sum(predicted_rewards))
         print("Overall risk ", overall_risk)
@@ -179,15 +184,13 @@ def safe_cars(seed=0):
                 verbose=True,
                 render=False
             )
-            print(m_p[:, 0] - X_new[:, 0])
-            print(m_p[:, 2] - X_new[:, 2])
             print("*********CHANGING***********")
-            _, _, r = pilco.predict(m_init, S_init, T)
+            _, _, r = pilco.predict(m_init, S_init, T, low, high)
             print(r)
             # to verify this actually changes, run the reward wrapper before
             # and after on the same trajectory
             pilco.mu.assign(1.5 * pilco.mu.numpy())
-            _, _, r = pilco.predict(m_init, S_init, T)
+            _, _, r = pilco.predict(m_init, S_init, T, low, high)
             print(r)
 
 
