@@ -84,8 +84,8 @@ def test_cascade():
     M_mat = M_mat[:, -1]
     S_mat = S_mat[:, :, -1]
 
-    assert jnp.allclose(M[0], M_mat.T, rtol=2e-4)
-    assert jnp.allclose(S, S_mat, rtol=2e-4)
+    assert jnp.allclose(M[0], M_mat, rtol=1e-2)
+    assert jnp.allclose(S, S_mat, rtol=1e-2)
 
 
 if __name__ == "__main__":

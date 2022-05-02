@@ -42,7 +42,7 @@ class MGPR(objax.Module):
         self.models = []
         for i in range(self.num_outputs):
 
-            kern = bayesnewton.kernels.SquaredExponential(
+            kern = bayesnewton.kernels.Matern72(
                 variance=1.0,
                 lengthscale=jnp.ones((data[0].shape[1],)),
                 fix_variance=self.fixed_parameters,

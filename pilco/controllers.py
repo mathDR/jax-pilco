@@ -66,21 +66,6 @@ class LinearController(objax.Module):
         self.b.assign(mean + sigma * objax.random.normal(self.b.shape))
 
 
-# class FakeGPR(gpflow.Module):
-#     def __init__(self, data, kernel, X=None, likelihood_variance=1e-4):
-#         gpflow.Module.__init__(self)
-#         if X is None:
-#             self.X = Parameter(data[0], name="DataX")
-#         else:
-#             self.X = X
-#         self.Y = Parameter(data[1], name="DataY")
-#         self.data = [self.X, self.Y]
-#         self.kernel = kernel
-#         self.likelihood = gpflow.likelihoods.Gaussian()
-#         self.likelihood.variance.assign(likelihood_variance)
-#         set_trainable(self.likelihood.variance, False)
-
-
 class RbfController(MGPR):
     """
     An RBF Controller implemented as a deterministic GP
@@ -112,7 +97,7 @@ class RbfController(MGPR):
         self.models = []
         for i in range(self.num_outputs):
 
-            kern = bayesnewton.kernels.SquaredExponential(
+            kern = bayesnewton.kernels.Matern72(
                 variance=1.0,
                 lengthscale=jnp.ones((data[0].shape[1],)),
                 fix_variance=self.fixed_parameters,
@@ -146,12 +131,15 @@ class RbfController(MGPR):
         print("Randomizing controller")
         for m in self.models:
             m.X = jnp.array(objax.random.normal(m.X.shape))
-            m.Y = jnp.array(0.1 * self.max_action * objax.random.normal(m.Y.shape))
+            m.Y = jnp.array(
+                0.1 * self.max_action * objax.random.normal(m.Y.shape)
+            )
 
             mean = 1.0
             sigma = 0.1
             m.kernel.transformed_lengthscale.assign(
                 softplus_inv(
-                    mean + sigma * objax.random.normal(m.kernel.lengthscale.shape)
+                    mean +
+                    sigma * objax.random.normal(m.kernel.lengthscale.shape)
                 )
             )
