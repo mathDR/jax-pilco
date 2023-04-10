@@ -23,9 +23,8 @@ class ExponentialReward(objax.Module):
         Input s : [k, k]
 
         Output M : [1, 1]
-        Output S  : [1, 1]
+        Output S : [1, 1]
         """
-        # TODO: Clean up this
 
         SW = s @ self.W
 

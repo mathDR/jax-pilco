@@ -1,9 +1,7 @@
 import jax.numpy as jnp
 import objax
-import bayesnewton
-from bayesnewton.utils import softplus_inv
-from .models import MGPR
-from numpy.random import gamma
+
+from jaxpilco.models import MGPR
 
 
 def squash_sin(m, s, max_action=None):
@@ -131,15 +129,12 @@ class RbfController(MGPR):
         print("Randomizing controller")
         for m in self.models:
             m.X = jnp.array(objax.random.normal(m.X.shape))
-            m.Y = jnp.array(
-                0.1 * self.max_action * objax.random.normal(m.Y.shape)
-            )
+            m.Y = jnp.array(0.1 * self.max_action * objax.random.normal(m.Y.shape))
 
             mean = 1.0
             sigma = 0.1
             m.kernel.transformed_lengthscale.assign(
                 softplus_inv(
-                    mean +
-                    sigma * objax.random.normal(m.kernel.lengthscale.shape)
+                    mean + sigma * objax.random.normal(m.kernel.lengthscale.shape)
                 )
             )
