@@ -1,7 +1,10 @@
 jax
-jax-lib
+jaxlib
 matplotlib
 pandas
 gym
+numba
+objax
 oct2py
 pytest
+bayesnewton
