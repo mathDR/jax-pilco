@@ -2,12 +2,12 @@ from setuptools import setup
 from setuptools import find_packages
 
 # Dependencies of PILCO
-requirements = ["bayesnewton"]
+requirements = ["tinygp"]
 
 packages = find_packages(".")
 setup(
-    name="pilco",
-    version="0.1",
+    name="jax-pilco",
+    version="0.2",
     author="Daniel Marthaler",
     author_email="dan.marthaler@gmail.com",
     description=("A JAX implementation of PILCO"),
