@@ -1,9 +1,19 @@
 import jax.numpy as jnp
+from typing import Tuple
+from jax.typing import Array
 import numpy as np
 from gym import make
 
 
-def rollout(env, pilco, timesteps, verbose=True, random=False, SUBS=1, render=False):
+def rollout(
+    env,
+    pilco,
+    timesteps: int,
+    verbose: bool = True,
+    random: bool = False,
+    SUBS: int = 1,
+    render: bool = False,
+) -> Tuple[Array, Array, int, int]:
     X = []
     Y = []
     x = env.reset()

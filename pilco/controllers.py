@@ -1,9 +1,12 @@
 import jax.numpy as jnp
 import objax
-import bayesnewton
-from bayesnewton.utils import softplus_inv
+import gpjax as gpx
 from .models import MGPR
 from numpy.random import gamma
+
+
+def inverse_softplus(x):
+    return jnp.log(jnp.exp(x) - 1.0)
 
 
 def squash_sin(m, s, max_action=None):
@@ -96,22 +99,29 @@ class RbfController(MGPR):
     def create_models(self, data):
         self.models = []
         for i in range(self.num_outputs):
+            kern = gpx.RBF(lengthscale=jnp.ones((data[0].shape[1],)), variance=1.0)
+            meanf = gpx.mean_functions.Zero()
+            prior = gpx.gps.Prior(mean_function=meanf, kernel=kern)
+            # bayesnewton.kernels.Matern72(
+            #     variance=1.0,
+            #     lengthscale=jnp.ones((data[0].shape[1],)),
+            #     fix_variance=self.fixed_parameters,
+            #     fix_lengthscale=self.fixed_parameters,
+            # )
 
-            kern = bayesnewton.kernels.Matern72(
-                variance=1.0,
-                lengthscale=jnp.ones((data[0].shape[1],)),
-                fix_variance=self.fixed_parameters,
-                fix_lengthscale=self.fixed_parameters,
+            lik = gpx.likelihoods.Gaussian(
+                obs_stddev, 1e-4, num_datapoints=len(data[0])
             )
-
-            lik = bayesnewton.likelihoods.Gaussian(
-                variance=1e-4, fix_variance=self.fixed_parameters
-            )
-            self.models.append(
-                bayesnewton.models.VariationalGP(
-                    kernel=kern, likelihood=lik, X=data[0], Y=data[1][:, i : i + 1]
-                )
-            )
+            # bayesnewton.likelihoods.Gaussian(
+            #     variance=1e-4, fix_variance=self.fixed_parameters
+            # )
+            posterior = prior * lik
+            # self.models.append(
+            #     bayesnewton.models.VariationalGP(
+            #         kernel=kern, likelihood=lik, X=data[0], Y=data[1][:, i : i + 1]
+            #     )
+            # )
+            self.models.append(posterior)
 
     def compute_action(self, m, s, squash=True):
         """
@@ -131,15 +141,12 @@ class RbfController(MGPR):
         print("Randomizing controller")
         for m in self.models:
             m.X = jnp.array(objax.random.normal(m.X.shape))
-            m.Y = jnp.array(
-                0.1 * self.max_action * objax.random.normal(m.Y.shape)
-            )
+            m.Y = jnp.array(0.1 * self.max_action * objax.random.normal(m.Y.shape))
 
             mean = 1.0
             sigma = 0.1
             m.kernel.transformed_lengthscale.assign(
                 softplus_inv(
-                    mean +
-                    sigma * objax.random.normal(m.kernel.lengthscale.shape)
+                    mean + sigma * objax.random.normal(m.kernel.lengthscale.shape)
                 )
             )

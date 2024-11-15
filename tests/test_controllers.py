@@ -5,6 +5,10 @@ import objax
 import os
 import oct2py
 
+from jax import config
+
+config.update("jax_enable_x64", True)
+
 oc = oct2py.Oct2Py()
 dir_path = os.path.dirname(os.path.realpath("__file__")) + "/tests/Matlab Code"
 print(dir_path)
