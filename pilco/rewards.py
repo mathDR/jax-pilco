@@ -28,24 +28,26 @@ class ExponentialReward(objax.Module):
         # TODO: Clean up this
 
         SW = s @ self.W
+        I_state_dim = jnp.eye(self.state_dim)
+        I_plus_SW = I_state_dim + SW
+        I_plus_2SW = I_state_dim + 2 * SW
+        mu_minus_t = m - self.t
 
-        iSpW = jnp.transpose(
-            jnp.linalg.solve((jnp.eye(self.state_dim) + SW), jnp.transpose(self.W))
-        )
+        iSpW = jnp.transpose(jnp.linalg.solve(I_plus_SW, jnp.transpose(self.W)))
 
-        muR = jnp.exp(-(m - self.t) @ iSpW @ jnp.transpose(m - self.t) / 2) / jnp.sqrt(
-            jnp.linalg.det(jnp.eye(self.state_dim) + SW)
+        muR = jnp.exp(-0.5 * mu_minus_t @ iSpW @ jnp.transpose(mu_minus_t)) / jnp.sqrt(
+            jnp.linalg.det(I_plus_SW)
         )
 
         i2SpW = jnp.transpose(
             jnp.linalg.solve(
-                (jnp.eye(self.state_dim) + 2 * SW),
+                I_plus_2SW,
                 jnp.transpose(self.W),
             )
         )
 
-        r2 = jnp.exp(-(m - self.t) @ i2SpW @ jnp.transpose(m - self.t)) / jnp.sqrt(
-            jnp.linalg.det(jnp.eye(self.state_dim) + 2 * SW)
+        r2 = jnp.exp(-mu_minus_t @ i2SpW @ jnp.transpose(mu_minus_t)) / jnp.sqrt(
+            jnp.linalg.det(I_plus_2SW)
         )
 
         sR = r2 - muR @ muR
