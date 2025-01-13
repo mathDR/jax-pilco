@@ -102,11 +102,8 @@ class PILCO(objax.Module):
                 )
             )
 
-            for i in range(maxiter):
-                self.optimizer()
-        else:
-            for i in range(maxiter):
-                self.optimizer()
+        for i in range(maxiter):
+            self.optimizer()
 
         best_parameter_values = [jnp.array(param) for param in self.controller.vars()]
         best_reward = self.compute_reward()

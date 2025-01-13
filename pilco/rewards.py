@@ -1,43 +1,51 @@
 import jax.numpy as jnp
-import objax
+import equinox as eqx
+from jax import Array
+from jax.typing import ArrayLike
+from typing import Optional, Tuple
 
 
-class ExponentialReward(objax.Module):
-    def __init__(self, state_dim, W=None, t=None):
+class ExponentialReward(eqx.Module):
+    def __init__(
+        self,
+        state_dim: int,
+        W: Optional[ArrayLike] = None,
+        t: Optional[ArrayLike] = None,
+    ):
         self.state_dim = state_dim
         if W is not None:
-            self.W = objax.StateVar(jnp.reshape(W, (state_dim, state_dim)))
-        else:
-            self.W = objax.TrainVar(jnp.eye(state_dim))
+            self.W = W
         if t is not None:
-            self.t = objax.StateVar(jnp.reshape(t, (1, state_dim)))
-        else:
-            self.t = objax.StateVar(jnp.zeros((1, state_dim)))
+            self.t = t
 
-    def compute_reward(self, m, s):
+    def compute_reward(
+        self,
+        mean_state_distribution: ArrayLike,
+        covariance_state_distibution: ArrayLike,
+    ) -> Tuple[Array, Array]:
         """
         Reward function, calculating mean and variance of rewards, given
         mean and variance of state distribution, along with the target State
         and a weight matrix.
-        Input m : [1, k]
+        Input mean_state_distribution : [1, k]
         Input s : [k, k]
 
         Output M : [1, 1]
-        Output S  : [1, 1]
+        Output S : [1, 1]
         """
         # TODO: Clean up this
 
-        SW = s @ self.W
+        SW = covariance_state_distibution @ self.W
         I_state_dim = jnp.eye(self.state_dim)
         I_plus_SW = I_state_dim + SW
         I_plus_2SW = I_state_dim + 2 * SW
-        mu_minus_t = m - self.t
+        mu_minus_t = mean_state_distribution - self.t
 
         iSpW = jnp.transpose(jnp.linalg.solve(I_plus_SW, jnp.transpose(self.W)))
 
-        muR = jnp.exp(-0.5 * mu_minus_t @ iSpW @ jnp.transpose(mu_minus_t)) / jnp.sqrt(
-            jnp.linalg.det(I_plus_SW)
-        )
+        mu_reward = jnp.exp(
+            -0.5 * mu_minus_t @ iSpW @ jnp.transpose(mu_minus_t)
+        ) / jnp.sqrt(jnp.linalg.det(I_plus_SW))
 
         i2SpW = jnp.transpose(
             jnp.linalg.solve(
@@ -50,36 +58,50 @@ class ExponentialReward(objax.Module):
             jnp.linalg.det(I_plus_2SW)
         )
 
-        sR = r2 - muR @ muR
-        return muR, sR
+        covariance_reward = r2 - muR @ muR
+        return mu_reward, covariance_reward
 
 
-class LinearReward(objax.Module):
-    def __init__(self, state_dim, W):
+class LinearReward(eqx.Module):
+    def __init__(self, state_dim: int, W: ArrayLike):
         self.state_dim = state_dim
-        self.W = objax.StateVar(jnp.reshape(W, (state_dim, 1)))
+        self.W = W
 
-    def compute_reward(self, m, s):
-        muR = jnp.reshape(m, (1, self.state_dim)) @ self.W
-        sR = jnp.transpose(self.W) @ s @ self.W
-        return muR, sR
+    def compute_reward(
+        self,
+        mean_state_distribution: ArrayLike,
+        covariance_state_distibution: ArrayLike,
+    ) -> Tuple[Array, Array]:
+        mu_reward = jnp.reshape(mean_state_distribution, (1, self.state_dim)) @ self.W
+        covariance_reward = (
+            jnp.transpose(self.W) @ covariance_state_distibution @ self.W
+        )
+        return mu_reward, covariance_reward
 
 
-class CombinedRewards(objax.Module):
-    def __init__(self, state_dim, rewards=[], coefs=None):
+class CombinedRewards(eqx.Module):
+    def __init__(
+        self, state_dim: int, rewards: list = [], coefs: Optional[ArrayLike] = None
+    ):
         self.state_dim = state_dim
         self.base_rewards = rewards
         if coefs is not None:
-            self.coefs = objax.StateVar(coefs)
+            self.coefs = coefs
         else:
-            self.coefs = objax.StateVar(jnp.ones(len(rewards)))
+            self.coefs = jnp.ones(len(rewards))
 
-    def compute_reward(self, m, s):
+    def compute_reward(
+        self,
+        mean_state_distribution: ArrayLike,
+        covariance_state_distibution: ArrayLike,
+    ) -> Tuple[Array, Array]:
         total_output_mean = 0
         total_output_covariance = 0
         for reward, coef in zip(self.base_rewards, self.coefs):
-            output_mean, output_covariance = reward.compute_reward(m, s)
+            output_mean, output_covariance = reward.compute_reward(
+                mean_state_distribution, covariance_state_distibution
+            )
             total_output_mean += coef * output_mean
-            total_output_covariance += coef**2 * output_covariance
+            total_output_covariance += jnp.square(coef) * output_covariance
 
         return total_output_mean, total_output_covariance
