@@ -1,64 +1,78 @@
-from numpy.random import gamma
+from jax import config
+
+config.update("jax_enable_x64", True)
+
 import gpjax as gpx
+import equinox as eqx
+from jax import grad, jit
 import jax.numpy as jnp
 import jax.scipy as jsp
-
-import objax
+import jax.random as jr
+import optax as ox
 
 
 def inverse_softplus(x):
     return jnp.log(jnp.exp(x) - 1.0)
 
 
-def randomize(model, mean=1, sigma=0.01):
-    model.kernel.transformed_lengthscale.assign(
-        inverse_softplus(
-            mean + sigma * objax.random.normal(model.kernel.lengthscale.shape)
-        )
-    )
-    model.kernel.transformed_variance.assign(
-        inverse_softplus(
-            mean + sigma * objax.random.normal(model.kernel.variance.shape)
-        )
-    )
-    if isinstance(model.likelihood.transformed_variance, objax.TrainVar):
-        model.likelihood.transformed_variance.assign(
-            inverse_softplus(mean + sigma * objax.random.normal(()))
-        )
+class DynamicalModel(eqx.Module):
+    """The forward model of the system dynamics.
 
+    Args:
+        kernel (Kernel): The kernel function
+        data (JAXArray): The input data. This is either state-action pairs
+            $(x_t, u_t)$, or (extension) will be observable-action pairs
+            $(y_t, u_t).$
+        targets (bool): if True, denotes if the targets are the next observation
+            $x_{t+1}$, or if False, state differences $Delta_t = x_{t+1}-x_t.$
 
-class MGPR(objax.Module):
+    """
+
+    data: gpx.Dataset
+    targets: bool
+    mean_func: gpx.mean_functions
+
     def __init__(
         self,
-        data,
-        trainable_likelihood_variance: bool = True,
-        fixed_parameters: bool = False,
-        name=None,
+        data: gpx.Dataset,
+        targets: bool,
+        mean_func: gpx.mean_functions | None = None,
     ):
-        super(MGPR, self).__init__()
+        super(DynamicalModel, self).__init__()
 
-        self.num_outputs = data[1].shape[1]
-        self.num_dims = data[0].shape[1]
-        self.num_datapoints = data[0].shape[0]
-        self.trainable_likelihood_variance = trainable_likelihood_variance
-        self.fixed_parameters = fixed_parameters
+        self.num_outputs = data.y[0].shape[
+            1
+        ]  # assumes each element of data is of the same length
+        self.num_dims = data.X[0].shape[
+            1
+        ]  # Assumes each element of data is of the same length
+        self.num_datapoints = data.X.shape[0]
+
+        if isinstance(mean_func, gpx.mean_functions):
+            self.meanf = mean_func
+        else:
+            self.meanf = gpx.mean_functions.Zero()
+
         self.create_models(data)
         self.optimizers = []
 
-    def create_models(self, data):
+    def create_models(self, data: JAXArray):
         self.models = []
         for i in range(self.num_outputs):
             kern = gpx.kernels.RBF(
-                variance=1.0, lengthscale=jnp.ones((data[0].shape[1],))
+                variance=1.0,
+                lengthscale=jnp.ones(
+                    self.num_dims,
+                ),
             )
-            meanf = gpx.mean_functions.Zero()
-            prior = gpx.gps.Prior(mean_function=meanf, kernel=kernel)
+
+            prior = gpx.gps.Prior(mean_function=self.meanf, kernel=kernel)
 
             lik = gpx.likelihoods.Gaussian(
-                num_datapoints=len(data[0]), obs_stddev=jnp.sqrt(0.01)
+                num_datapoints=self.num_datapoints, obs_stddev=jnp.sqrt(0.01)
             )
 
-            self.models.append(prior * likelihood)
+            self.models.append(prior * lik)
 
     def set_data(self, data):
         X_dim = self.models[0].X.shape

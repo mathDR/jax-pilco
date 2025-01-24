@@ -1,46 +1,60 @@
 import jax.numpy as jnp
-import objax
+import equinox as eqx
+from jax import Array
+from jax.typing import ArrayLike
+from typing import Optional, Tuple
 import gpjax as gpx
 from .models import MGPR
-from numpy.random import gamma
+from jax import random
 
 
-def inverse_softplus(x):
+def inverse_softplus(x: ArrayLike) -> Array:
     return jnp.log(jnp.exp(x) - 1.0)
 
 
-def squash_sin(m, s, max_action=None):
+def squash_sin(
+    controls_mean: ArrayLike,
+    controls_covariance: ArrayLike,
+    max_action: Optional[ArrayLike] = None,
+) -> Tuple[Array, Array, Array]:
     """
     Squashing function, passing the controls mean and variance
     through a sinus, as in gSin.m. The output is in [-max_action, max_action].
-    IN: mean (m) and variance(s) of the control input, max_action
+    IN: mean and covariance of the control input, along with max_action
     OUT: mean (M) variance (S) and input-output (C) covariance of the squashed
          control input
     """
-    k = jnp.shape(m)[1]
+    k = jnp.shape(controls_mean)[1]
     if max_action is None:
         max_action = jnp.ones((1, k))  # squashes in [-1,1] by default
     else:
         max_action = max_action * jnp.ones((1, k))
 
-    M = max_action * jnp.exp(-0.5 * jnp.diag(s)) * jnp.sin(m)
-
-    lq = -0.5 * (jnp.diag(s)[:, None] + jnp.diag(s)[None, :])
-    q = jnp.exp(lq)
-    mT = jnp.transpose(m, (1, 0))
-    S = (jnp.exp(lq + s) - q) * jnp.cos(mT - m) - (jnp.exp(lq - s) - q) * jnp.cos(
-        mT + m
+    M = (
+        max_action
+        * jnp.exp(-0.5 * jnp.diag(controls_covariance))
+        * jnp.sin(controls_mean)
     )
+
+    lq = -0.5 * (
+        jnp.diag(controls_covariance)[:, None] + jnp.diag(controls_covariance)[None, :]
+    )
+    q = jnp.exp(lq)
+    mT = jnp.transpose(controls_mean, (1, 0))
+    S = (jnp.exp(lq + controls_covariance) - q) * jnp.cos(mT - controls_mean) - (
+        jnp.exp(lq - controls_covariance) - q
+    ) * jnp.cos(mT + controls_mean)
     S = 0.5 * max_action * jnp.transpose(max_action, (1, 0)) * S
 
-    C = max_action * objax.Vectorize(lambda x: jnp.diag(x, k=0), objax.VarCollection())(
-        jnp.exp(-0.5 * jnp.diag(s)) * jnp.cos(m)
+    C = max_action * jnp.diag(
+        jnp.exp(-0.5 * jnp.diag(controls_covariance)) * jnp.cos(controls_mean)
     )
+
     return M, S, C.reshape((k, k))
 
 
-class LinearController(objax.Module):
-    def __init__(self, state_dim, control_dim, max_action=1.0):
+class LinearController(eqx.Module):
+    def __init__(self, state_dim: int, control_dim: int, max_action: float = 1.0):
         objax.random.Generator(0)
         self.W = objax.TrainVar(objax.random.uniform((control_dim, state_dim)))
         self.b = objax.TrainVar(objax.random.uniform((1, control_dim)))
@@ -78,17 +92,22 @@ class RbfController(MGPR):
 
     def __init__(
         self,
-        state_dim,
-        control_dim,
-        num_basis_functions,
-        max_action=1.0,
-        fixed_parameters=False,
+        state_dim: int,
+        control_dim: int,
+        num_basis_functions: int,
+        max_action: float = 1.0,
+        key: Array,
     ):
+        if not dtypes.issubdtype(key.dtype, dtypes.prng_key):
+            raise TypeError("New-style typed JAX PRNG keys required")
+
+        key, subkey1, subkey2 = random.split(key)
+
         MGPR.__init__(
             self,
             [
-                objax.random.normal((num_basis_functions, state_dim)),
-                0.1 * objax.random.normal((num_basis_functions, control_dim)),
+                random.normal(subkey1, shape=(num_basis_functions, state_dim)),
+                0.1 * random.normal(subkey2, shape=(num_basis_functions, control_dim)),
             ],
             fixed_parameters,
         )
@@ -96,18 +115,12 @@ class RbfController(MGPR):
         self.fixed_parameters = fixed_parameters
         self.max_action = max_action
 
-    def create_models(self, data):
+    def create_models(self, data: Dataset):
         self.models = []
         for i in range(self.num_outputs):
             kern = gpx.RBF(lengthscale=jnp.ones((data[0].shape[1],)), variance=1.0)
             meanf = gpx.mean_functions.Zero()
             prior = gpx.gps.Prior(mean_function=meanf, kernel=kern)
-            # bayesnewton.kernels.Matern72(
-            #     variance=1.0,
-            #     lengthscale=jnp.ones((data[0].shape[1],)),
-            #     fix_variance=self.fixed_parameters,
-            #     fix_lengthscale=self.fixed_parameters,
-            # )
 
             lik = gpx.likelihoods.Gaussian(
                 obs_stddev, 1e-4, num_datapoints=len(data[0])
@@ -123,21 +136,25 @@ class RbfController(MGPR):
             # )
             self.models.append(posterior)
 
-    def compute_action(self, m, s, squash=True):
+    def compute_action(
+        self, state_mean: ArrayLike, state_covariance: ArrayLike, squash: bool = True
+    ) -> Tuple[Array < Array, Array]:
         """
         RBF Controller. See Deisenroth's Thesis Section
         IN: mean (m) and variance (s) of the state
         OUT: mean (M) and variance (S) of the action
         """
         iK, beta = self.calculate_factorizations()
-        M, S, V = self.predict_given_factorizations(m, s, 0.0 * iK, beta)
+        M, S, V = self.predict_given_factorizations(
+            state_mean, state_covariance, 0.0 * iK, beta
+        )
         S = S - jnp.diag(self.variance - 1e-6)
         if squash:
             M, S, V2 = squash_sin(M, S, self.max_action)
             V = V @ V2
         return M, S, V
 
-    def randomize(self):
+    def randomize(self, key: Array):
         print("Randomizing controller")
         for m in self.models:
             m.X = jnp.array(objax.random.normal(m.X.shape))

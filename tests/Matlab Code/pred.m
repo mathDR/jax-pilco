@@ -17,8 +17,8 @@
 %   M                  D-by-(H+1) sequence of predicted mean vectors
 %   S                  D-by-D-(H+1) sequence of predicted covariance
 %                      matrices
-% 
-% Copyright (C) 2008-2013 by 
+%
+% Copyright (C) 2008-2013 by
 % Marc Deisenroth, Andrew McHutchon, Joe Hall, and Carl Edward Rasmussen.
 %
 % Last modified: 2013-01-23
@@ -34,6 +34,6 @@ M(:,1) = m; S(:,:,1) = s;
 for i = 1:H
   % Modified to avoid passing function handles
   [m s] = propagate(m, s, plant, dynmodel, policy);
-  M(:,i+1) = m(end-D+1:end); 
+  M(:,i+1) = m(end-D+1:end);
   S(:,:,i+1) = s(end-D+1:end,end-D+1:end);
 end

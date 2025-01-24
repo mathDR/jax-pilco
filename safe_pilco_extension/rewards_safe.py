@@ -20,9 +20,7 @@ class RiskOfCollision(objax.Module):
         #     ) * (
         #     dist2.cdf(self.high[1]) - dist2.cdf(self.low[1])
         #     )
-        risk = (
-            dist1.cdf(high[0]) - dist1.cdf(low[0])
-            ) * (
+        risk = (dist1.cdf(high[0]) - dist1.cdf(low[0])) * (
             dist2.cdf(high[1]) - dist2.cdf(low[1])
         )
         return risk, 0.0001
@@ -39,10 +37,7 @@ class SingleConstraint(objax.Module):
         else:
             self.low = low
         if high is None and low is None:
-            raise Exception(
-                "At least one of bounds (high,low) "
-                "has to be defined"
-                )
+            raise Exception("At least one of bounds (high,low) " "has to be defined")
         self.dim = int(dim)
         if inside:
             self.inside = 1.0

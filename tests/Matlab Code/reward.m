@@ -1,5 +1,5 @@
 %% reward.m
-% *Summary:* Compute expectation, variance, and their derivatives of an 
+% *Summary:* Compute expectation, variance, and their derivatives of an
 % exponentiated negative quadratic cost $\exp(-(x-z)'W(x-z)/2)$,
 % where $x\sim\mathcal N(m,S)$
 %
@@ -19,14 +19,14 @@
 %   dsRdm:      1-by-D derivative of variance of reward wrt input mean
 %   dsRdS:      D-by-D derivative reward variance wrt input covariance matrix
 %
-% Copyright (C) 2008-2013 by 
-% Marc Deisenroth, Andrew McHutchon, Joe Hall, and Carl Edward Rasmussen. 
+% Copyright (C) 2008-2013 by
+% Marc Deisenroth, Andrew McHutchon, Joe Hall, and Carl Edward Rasmussen.
 %
 % Last modification: 2013-01-20
 %
 %% High-Level Steps
 % # Compute expected reward
-% # Compute the derivatives of the expected reward with respect to the input 
+% # Compute the derivatives of the expected reward with respect to the input
 %   distribution (optional)
 % # Compute variance of reward
 % # Compute the derivatives of the variance of the reward with
@@ -41,7 +41,7 @@ SW = S*W;
 iSpW = W/(eye(D)+SW);
 
 % 1. expected reward
-muR = exp(-(m-z)'*iSpW*(m-z)/2)/sqrt(det(eye(D)+SW)); 
+muR = exp(-(m-z)'*iSpW*(m-z)/2)/sqrt(det(eye(D)+SW));
 
 % 2. derivatives of expected reward
 if nargout > 1
@@ -64,4 +64,3 @@ if nargout > 4
   % wrt input covariance matrix
   dsRdS = r2*(2*i2SpW*(m-z)*(m-z)'-eye(D))*i2SpW-2*muR*dmuRdS;
 end
-

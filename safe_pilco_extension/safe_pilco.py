@@ -6,9 +6,18 @@ from jax.lax import fori_loop
 
 class SafePILCO(PILCO):
     def __init__(
-        self, data, num_induced_points=None, horizon=30, controller=None,
-        reward_add=None, reward_mult=None, m_init=None, S_init=None,
-        trainable_likelihood_variance=True, name=None, mu=5.0
+        self,
+        data,
+        num_induced_points=None,
+        horizon=30,
+        controller=None,
+        reward_add=None,
+        reward_mult=None,
+        m_init=None,
+        S_init=None,
+        trainable_likelihood_variance=True,
+        name=None,
+        mu=5.0,
     ):
         super(SafePILCO, self).__init__(
             data,
@@ -18,8 +27,8 @@ class SafePILCO(PILCO):
             reward=reward_add,
             m_init=m_init,
             S_init=S_init,
-            trainable_likelihood_variance=trainable_likelihood_variance
-            )
+            trainable_likelihood_variance=trainable_likelihood_variance,
+        )
         if reward_mult is None:
             raise exception("have to define multiplicative reward")
 
@@ -42,7 +51,7 @@ class SafePILCO(PILCO):
                             m_x,
                             s_x,
                         )[0]
-                    )
+                    ),
                 ),
                 jnp.multiply(
                     reward_mult,
@@ -53,7 +62,7 @@ class SafePILCO(PILCO):
                             low,
                             high,
                         )[0]
-                    )
+                    ),
                 ),
             )
 

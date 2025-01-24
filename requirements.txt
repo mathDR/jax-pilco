@@ -7,4 +7,5 @@ numba
 objax
 oct2py
 pytest
-gpjax
+tinygp
+pre-commit

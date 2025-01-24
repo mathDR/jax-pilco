@@ -52,7 +52,7 @@ input = gpmodel.inputs;  target = gpmodel.targets; X = gpmodel.hyp;
 if true
   oldX = X; oldIn = input; oldOut = target; oldn = n;
   K = zeros(n,n,E); iK = K; beta = zeros(n,E);
-  
+
   for i=1:E                                              % compute K and inv(K)
     inp = bsxfun(@rdivide,gpmodel.inputs,exp(X(1:D,i)'));
     K(:,:,i) = exp(2*X(D+1,i)-maha(inp,inp)/2);
@@ -75,12 +75,12 @@ for i=1:E
   iL = diag(exp(-X(1:D,i))); % inverse length-scales
   in = inp*iL;
   B = iL*s*iL+eye(D);
-  
+
   t = in/B;
   l = exp(-sum(in.*t,2)/2); lb = l.*beta(:,i);
   tL = t*iL;
   c = exp(2*X(D+1,i))/sqrt(det(B));
-  
+
   M(i) = sum(lb)*c;                                            % predicted mean
   V(:,i) = tL'*lb*c;                   % inv(s) times input-output covariance
   k(:,i) = 2*X(D+1,i)-sum(in.*in,2)/2;
@@ -89,7 +89,7 @@ end
 % 3) Compute predictive covariance, non-central moments
 for i=1:E
   ii = bsxfun(@rdivide,inp,exp(2*X(1:D,i)'));
-  
+
   for j=1:i
     R = s*diag(exp(-2*X(1:D,i))+exp(-2*X(1:D,j)))+eye(D);
     t = 1/sqrt(det(R));
@@ -97,9 +97,9 @@ for i=1:E
     L = exp(bsxfun(@plus,k(:,i),k(:,j)')+maha(ii,-ij,R\s/2));
     S(i,j) = t*beta(:,i)'*L*beta(:,j); S(j,i) = S(i,j);
   end
-  
+
   S(i,i) = S(i,i) + 1e-6;          % add small jitter for numerical reasons
-  
+
 end
 
 % 4) Centralize moments

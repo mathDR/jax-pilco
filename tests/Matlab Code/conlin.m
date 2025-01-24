@@ -65,10 +65,10 @@ V = w';                                   % inv(s)*input-output covariance
 if nargout > 3
   dMdm = w;            dSdm = zeros(E*E,D); dVdm = zeros(D*E,D);
   dMds = zeros(E,D*D); dSds = kron(w,w);    dVds = zeros(D*E,D*D);
-  
+
   X=reshape(1:D*D,[D D]); XT=X'; dSds=(dSds+dSds(:,XT(:)))/2; % symmetrize
   X=reshape(1:E*E,[E E]); XT=X'; dSds=(dSds+dSds(XT(:),:))/2;
-  
+
   wTdw =reshape(permute(reshape(eye(E*D),[E D E D]),[2 1 3 4]),[E*D E*D]);
   dMdp = [eye(E) kron(m',eye(E))];
   dSdp = [zeros(E*E,E) kron(eye(E),w*s)*wTdw + kron(w*s,eye(E))];

@@ -1,5 +1,5 @@
 %% predcost.m
-% *Summary:* Compute trajectory of expected costs for a given set of 
+% *Summary:* Compute trajectory of expected costs for a given set of
 % state distributions
 %
 % inputs:
@@ -15,7 +15,7 @@
 % L            expected cumulative (discounted) cost
 % s            standard deviation of cost
 %
-% Copyright (C) 2008-2013 by 
+% Copyright (C) 2008-2013 by
 % Marc Deisenroth, Andrew McHutchon, Joe Hall, and Carl Edward Rasmussen.
 %
 % Last modified: 2012-01-12
@@ -25,7 +25,7 @@
 % # Predict corresponding cost distribution
 
 function [L, s] = predcost(m0, S, dynmodel, plant, policy, cost, H)
-%% Code 
+%% Code
 
 L = zeros(size(m0,2),H); s = zeros(size(m0,2),H);
 for k = 1:size(m0,2);
@@ -37,4 +37,4 @@ for k = 1:size(m0,2);
     s(k,t) = sqrt(v);
   end
 end
-L = mean(L,1); s = mean(s,1); 
+L = mean(L,1); s = mean(s,1);

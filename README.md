@@ -10,4 +10,3 @@ Initially a rewrite is initiated, but eventually we will extend the repo with:
 	b. Will still fit the Gaussian to the posterior
 3. Use a Laplace Likelihood to constrain the posterior to be Gaussian.
 4. ???
-

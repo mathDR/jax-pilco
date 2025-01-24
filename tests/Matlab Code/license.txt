@@ -1,10 +1,10 @@
-PILCO REINFORCEMENT LEARNING TOOLBOX version 0.9 
+PILCO REINFORCEMENT LEARNING TOOLBOX version 0.9
 for Matlab > 7.x
 
 The code is released under the FreeBSD License.
 
 
-Copyright (C) 2008-2013 by 
+Copyright (C) 2008-2013 by
 Marc Deisenroth, Andrew McHutchon, Joe Hall, and Carl Edward Rasmussen.
 All rights reserved.
 
