@@ -2,13 +2,14 @@ from jax import config
 
 config.update("jax_enable_x64", True)
 
-import gpjax as gpx
+from tinygp import kernels, GaussianProcess
 import equinox as eqx
 from jax import grad, jit
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as jr
 import optax as ox
+from dataset import Dataset
 
 
 def inverse_softplus(x):
@@ -20,7 +21,7 @@ class DynamicalModel(eqx.Module):
 
     Args:
         kernel (Kernel): The kernel function
-        data (JAXArray): The input data. This is either state-action pairs
+        data (Dataset): The input data. This is either state-action pairs
             $(x_t, u_t)$, or (extension) will be observable-action pairs
             $(y_t, u_t).$
         targets (bool): if True, denotes if the targets are the next observation
@@ -28,95 +29,88 @@ class DynamicalModel(eqx.Module):
 
     """
 
-    data: gpx.Dataset
+    data: Dataset
     targets: bool
-    mean_func: gpx.mean_functions
 
     def __init__(
         self,
-        data: gpx.Dataset,
+        data: Dataset,
         targets: bool,
-        mean_func: gpx.mean_functions | None = None,
     ):
         super(DynamicalModel, self).__init__()
-
-        self.num_outputs = data.y[0].shape[
-            1
-        ]  # assumes each element of data is of the same length
-        self.num_dims = data.X[0].shape[
-            1
-        ]  # Assumes each element of data is of the same length
+        # assume each element of data is of the same length
+        self.num_outputs = data.y[0].shape[1]
+        # Assume each element of data is of the same length
+        self.num_dims = data.X[0].shape[1]
         self.num_datapoints = data.X.shape[0]
 
-        if isinstance(mean_func, gpx.mean_functions):
-            self.meanf = mean_func
-        else:
-            self.meanf = gpx.mean_functions.Zero()
+        # Parameters for the GP models
+        self.theta = {
+            "log_amps": np.zeros(self.num_outputs),
+            "log_scales": np.zeros(self.num_outputs),
+        }
 
         self.create_models(data)
         self.optimizers = []
 
-    def create_models(self, data: JAXArray):
+    def create_models(self, data: Dataset):
         self.models = []
+        amps = jnp.exp(self.theta["log_amps"])
+        scales = jnp.exp(self.theta["log_scales"])
         for i in range(self.num_outputs):
-            kern = gpx.kernels.RBF(
-                variance=1.0,
-                lengthscale=jnp.ones(
-                    self.num_dims,
-                ),
-            )
+            kern = amps[i] * kernels.ExpSquared(scales[i])
 
-            prior = gpx.gps.Prior(mean_function=self.meanf, kernel=kernel)
-
-            lik = gpx.likelihoods.Gaussian(
-                num_datapoints=self.num_datapoints, obs_stddev=jnp.sqrt(0.01)
-            )
-
-            self.models.append(prior * lik)
-
-    def set_data(self, data):
-        X_dim = self.models[0].X.shape
-        Y_dim = self.models[0].Y.shape
-        for i in range(len(self.models)):
-            self.models[i].X = jnp.array(data[0])
-            self.models[i].Y = jnp.array(data[1][:, i : i + 1])
-            self.models[i].data = [self.models[i].X, self.models[i].Y]
-        if (self.models[0].X.shape != X_dim) or (self.models[0].Y.shape != Y_dim):
-            # Need to rebuild GP
-            self.num_outputs = data[1].shape[1]
-            self.num_dims = data[0].shape[1]
-            self.num_datapoints = data[0].shape[0]
-            self.create_models(data)
-            self.optimizers = []
+            self.models.append(GaussianProcess(kern, self.data.X))
 
     def optimize(self, maxiter=1000, restarts=1):
         lr_adam = 0.1
 
         if len(self.optimizers) == 0:  # This is the first call to optimize();
             for i, model in enumerate(self.models):
-                opt_hypers = objax.optimizer.Adam(model.vars())
-                energy = objax.GradValues(model.energy, model.vars())
-
-                def train_op(en=energy, oh=opt_hypers):
-                    dE, E = en()
-                    oh(lr_adam, dE)
-                    return E
-
-                self.optimizers.append(
-                    objax.Jit(
-                        objax.Function(
-                            train_op,
-                            model.vars() + opt_hypers.vars(),
-                        )
-                    )
-                )
+                self.optimizers.append(optax.lbfgs())
             for optimizer in self.optimizers:
-                for i in range(maxiter):
-                    optimizer()
+                value_and_grad = optax.value_and_grad_from_state(
+                    -model.log_probability(self.data.y[:, i])
+                )
+                params = jnp.array(
+                    [self.theta["log_amps"][i], self.theta["log_scales"][i]]
+                )
+                opt_state = optimizer.init(params)
+                for _ in range(maxiter):
+                    value, grad = value_and_grad(params, state=opt_state)
+                    updates, opt_state = solver.update(
+                        grad,
+                        opt_state,
+                        params,
+                        value=value,
+                        grad=grad,
+                        value_fn=-model.log_probability,
+                    )
+                    params = optax.apply_updates(params, updates)
         else:
             for optimizer in self.optimizers:
-                for i in range(maxiter):
-                    optimizer()
+                value_and_grad = optax.value_and_grad_from_state(
+                    -model.log_probability(self.data.y[:, i])
+                )
+                params = jnp.array(
+                    [self.theta["log_amps"][i], self.theta["log_scales"][i]]
+                )
+                opt_state = optimizer.init(params)
+                for _ in range(maxiter):
+                    value, grad = value_and_grad(params, state=opt_state)
+                    updates, opt_state = solver.update(
+                        grad,
+                        opt_state,
+                        params,
+                        value=value,
+                        grad=grad,
+                        value_fn=-model.log_probability,
+                    )
+                    params = optax.apply_updates(params, updates)
+
+        kern = params[0] * kernels.ExpSquared(params[1])
+
+        self.models.append(GaussianProcess(kern, self.data.X))
 
         for model, optimizer in zip(self.models, self.optimizers):
             best_params = {
@@ -233,30 +227,3 @@ class DynamicalModel(eqx.Module):
 
     def centralized_input(self, m):
         return self.X - m
-
-    def K(self, X1, X2=None):
-        return jnp.stack([model.kernel.K(X1, X2) for model in self.models])
-
-    @property
-    def Y(self):
-        return jnp.concatenate([model.Y for model in self.models], axis=1)
-
-    @property
-    def X(self):
-        return self.models[0].X
-
-    @property
-    def lengthscales(self):
-        return jnp.stack([model.kernel.lengthscale for model in self.models])
-
-    @property
-    def variance(self):
-        return jnp.stack([model.kernel.variance for model in self.models])
-
-    @property
-    def noise(self):
-        return jnp.stack([model.likelihood.variance for model in self.models])
-
-    @property
-    def data(self):
-        return (self.X, self.Y)

@@ -112,8 +112,10 @@ class DynamicalModel:
         for i, model in enumerate(self.models):  # Iterate with index
             opt_posterior, history = gpx.fit(
                 model=model,  # Use the current model
-                objective=gpx.objectives.conjugate_mll,
-                train_data=self.data,  # Use self.data
+                objective=lambda p, d: -gpx.objectives.conjugate_mll(p, d),
+                train_data=gpx.Dataset(
+                    self.data.X, self.data.y[:, i].reshape(-1, 1)
+                ),  # Use self.data
                 optim=self.optimizers[i],  # Use the correct optimizer
                 num_iters=maxiter,
                 safe=True,
