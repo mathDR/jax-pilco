@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import jax.random as jr
 from jax import Array
 from jax.typing import ArrayLike
-from typing import List
+from typing import List, Optional
 
 
 class Controller:
@@ -85,7 +85,7 @@ class Sum_of_sinusoids(Controller):
         amplitude_max: ArrayLike,
         to_squash: bool = False,
         max_action: float = 1.0,
-        key: Optiona[ArrayLike] = None,
+        key: Optional[ArrayLike] = None,
     ):
         super(Sum_of_sinusoids, self).__init__(
             state_dim=state_dim,
