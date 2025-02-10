@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import jax.random as jr
+from jax import Array
 from jax.typing import ArrayLike
 from typing import List
 
@@ -58,7 +59,7 @@ class RandomController(Controller):
         self.state_dim = state_dim
         self.max_action = max_action
 
-    def compute_action(self, states: List[Array], key: ArrayLike) -> float:
+    def compute_action(self, states: List[ArrayLike], key: ArrayLike) -> float:
         """
         Simple random action
         IN: current states and key to use for random action
@@ -78,10 +79,10 @@ class Sum_of_sinusoids(Controller):
         state_dim: int,
         input_dim: int,
         num_sin: int,
-        omega_min: Array,
-        omega_max: Array,
-        amplitude_min: Array,
-        amplitude_max: Array,
+        omega_min: ArrayLike,
+        omega_max: ArrayLike,
+        amplitude_min: ArrayLike,
+        amplitude_max: ArrayLike,
         to_squash: bool = False,
         max_action: float = 1.0,
         key: Optiona[ArrayLike] = None,
@@ -109,7 +110,7 @@ class Sum_of_sinusoids(Controller):
             key, shape=(num_sin, input_dim), minval=jnp.pi, maxval=jnp.pi
         )
 
-    def forward(self, states: List[Array], t: Array) -> ArrayLike:
+    def forward(self, states: List[ArrayLike], t: ArrayLike) -> Array:
         # returns the controller values at times t
         return self.f_squash(
             jnp.sum(
