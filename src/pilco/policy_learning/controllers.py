@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import jax.random as jr
 from jax.typing import ArrayLike
+from typing import List
 
 
 class Controller:
