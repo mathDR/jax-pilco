@@ -1,14 +1,20 @@
+import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jr
 from jax import Array
 from jax.typing import ArrayLike
-from typing import List, Optional
+from typing import Generator, List, Optional
 
 
-class Controller:
+class Controller(epx.Module):
     """
     Superclass of controller objects
     """
+
+    state_dim: int
+    input_dim: int
+    to_squash: bool
+    max_action: float
 
     def __init__(
         self,
@@ -21,22 +27,25 @@ class Controller:
         # model parameters
         self.state_dim = state_dim
         self.input_dim = input_dim
+        self.max_action = max_action
 
         # set squashing function
         if to_squash:
-            self.f_squash = lambda x: self.squashing(x, max_action)
+            self.f_squash = lambda x: self.squashing(x)
         else:
             # assign the identity function
             self.f_squash = lambda x: x
 
-    def compute_action(self, states: List[Array], key: ArrayLike) -> float:
+    def compute_action(
+        self, states: ArrayLike, time_for_action: float, key: ArrayLike
+    ) -> Generator[float, None, None]:
         raise NotImplementedError()
 
-    def squashing(self, u: Array, u_max: float) -> ArrayLike:
+    def squashing(self, u: Array) -> ArrayLike:
         """
-        Squash the inputs inside (-u_max, +u_max)
+        Squash the inputs inside (-max_action, +max_action)
         """
-        return u_max * jnp.tanh(u / u_max)
+        return self.max_action * jnp.tanh(u / self.max_action)
 
 
 class RandomController(Controller):
@@ -49,27 +58,29 @@ class RandomController(Controller):
         to_squash: bool = False,
         max_action: float = 1.0,
     ):
-        super(Controller, self).__init__(
-            state_dim=state_dim,
-            input_dim=input_dim,
-            to_squash=to_squash,
-            max_action=max_action,
-        )
+        super(Controller, self).__init__()
         self.control_dim = control_dim
         self.state_dim = state_dim
         self.max_action = max_action
 
-    def compute_action(self, states: List[ArrayLike], key: ArrayLike) -> float:
+    def compute_action(
+        self, states: ArrayLike, time_for_action: float, key: Optional[ArrayLike]
+    ) -> Generator[float, None, None]:
         """
         Simple random action
-        IN: current states and key to use for random action
-        OUT: the action value
+        IN: current state, time_for_action and key to use for random action
+        OUT: the action value (uniform in (-max_action,+max_action))
         """
-        key, subkey = jr.split(key)
-        return jr.uniform(key, minval=-max_action, maxval=max_action)
+        if key:
+            key, subkey = jr.split(key)
+        else:
+            key = jr.key(123)
+            key, subkey = jr.split(key)
+
+        yield jr.uniform(subkey, minval=-self.max_action, maxval=self.max_action)
 
 
-class Sum_of_sinusoids(Controller):
+class Sum_of_Sinusoids(Controller):
     """
     Exploration policy: sum of 'num_sin' sinusoids with random amplitudes and frequencies
     """
@@ -87,12 +98,12 @@ class Sum_of_sinusoids(Controller):
         max_action: float = 1.0,
         key: Optional[ArrayLike] = None,
     ):
-        super(Sum_of_sinusoids, self).__init__(
-            state_dim=state_dim,
-            input_dim=input_dim,
-            to_squash=to_squash,
-            max_action=max_action,
-        )
+        super(Sum_of_sinusoids, self).__init__()
+        self.state_dim = (state_dim,)
+        self.input_dim = (input_dim,)
+        self.to_squash = (to_squash,)
+        self.max_action = (max_action,)
+
         if key is None:
             key = jr.key(123)
         self.num_sin = num_sin
@@ -110,9 +121,11 @@ class Sum_of_sinusoids(Controller):
             key, shape=(num_sin, input_dim), minval=jnp.pi, maxval=jnp.pi
         )
 
-    def forward(self, states: List[ArrayLike], t: ArrayLike) -> Array:
+    def compute_action(
+        self, states: List[ArrayLike], t: ArrayLike
+    ) -> Generator[Array, None, None]:
         # returns the controller values at times t
-        return self.f_squash(
+        yield self.f_squash(
             jnp.sum(
                 self.amplitudes * (jnp.sin(self.omega * t + self.phases)), axis=0
             ).reshape(-1, self.input_dim)

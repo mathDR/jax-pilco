@@ -1,11 +1,12 @@
 __all__ = ["DynamicalModel"]
 
 from jax import config
+from dataclasses import replace
 
 config.update("jax_enable_x64", True)
 
 import gpjax as gpx
-
+import equinox as eqx
 from jax import Array, grad, jit
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -19,12 +20,11 @@ def inverse_softplus(x):
     return jnp.log(jnp.exp(x) - 1.0)
 
 
-class DynamicalModel:
+class DynamicalModel(eqx.Module):
     """The forward model of the system dynamics.
 
-    Currently is a Multiple Gaussian Process regression with prediction on noisy inputs.
-
-    Currently Creates a separate GP for every output dimension but
+    Currently is a Multiple Gaussian Process regression with an independent GP for
+    every output dimension but
     TODO: use a multioutput kernel.
 
     Args:
@@ -32,25 +32,26 @@ class DynamicalModel:
         data (JAXArray): The input data. This is either state-action pairs
             $(x_t, u_t)$, or (extension) will be observable-action pairs
             $(y_t, u_t).$
-        targets (bool): if True, denotes if the targets are the next observation
-            $x_{t+1}$, or if False, state differences $Delta_t = x_{t+1}-x_t.$
+
 
     """
 
-    data: gpx.Dataset
-    targets: bool
+    data: gpx.Dataset = eqx.field(static=True)
     mean_func: Optional[gpx.mean_functions] = None
-    name: Optional[str] = None
+    name: Optional[str] = eqx.field(static=True)
+    num_outputs: int = eqx.field(static=True)
+    input_dimension: int = eqx.field(static=True)
+    num_datapoints: int = eqx.field(static=True)
+    models: List[gpx.gps.ConjugatePosterior]
+    optimizers: List[ox._src.base.GradientTransformationExtraArgs]
 
     def __init__(
         self,
         data: gpx.Dataset,
-        targets: bool,
         mean_func: Optional[gpx.mean_functions] = None,
         name: Optional[str] = None,
     ) -> None:
         self.data = data
-        self.targets = targets
         self.mean_func = mean_func
 
         self.num_outputs: int = data.y.shape[1]
@@ -65,11 +66,10 @@ class DynamicalModel:
         self.create_models()
         self.optimizers: List = []
 
-        if name:
-            self.name = name
+        self.name = name
 
     def create_models(self) -> None:
-        self.models: List[gpjax.gps.ConjugatePosterior] = []
+        self.models = []
         # self.lower_cholesky_K = []
         # self.K_inverse_y = []
 
@@ -86,22 +86,9 @@ class DynamicalModel:
 
             self.models.append(prior * lik)
 
-    def set_data(self, newdata: gpx.Dataset):  # Type hint added
-        self.data = newdata  # Update the data
-        self.num_datapoints = newdata.X.shape[0]  # Update num_datapoints
-        for i in range(len(self.models)):
-            # Recreate the likelihood with the new data's size
-            old_prior = self.models[i].prior  # Access the prior
-            new_likelihood = gpx.likelihoods.Gaussian(
-                num_datapoints=self.num_datapoints
-            )
-            self.models[i] = old_prior * new_likelihood  # Rebuild the model
-
-        self.optimizers = []  # Reset optimizers since model changed
-        # No need to manually set X and Y. gpx.fit handles data association.
-
-    def optimize(self, maxiter: int = 1000):
-        key = jr.key(123)
+    def optimize(self, maxiter: int = 1000, key: Optional[ArrayLike] = None):
+        if key is None:
+            key = jr.key(123)
 
         if not self.optimizers:  # More Pythonic way to check if list is empty
             for model in self.models:
@@ -126,18 +113,30 @@ class DynamicalModel:
             # self.lower_cholesky_K[i] =
             # self.K_inverse_y[i] =
 
-    def predict_all_outputs(
-        self, test_inputs: Array
-    ) -> List[Tuple[ArrayLike, ArrayLike]]:
+    def predict_all_outputs(self, test_inputs: Array) -> Tuple[ArrayLike, ArrayLike]:
         """
-        Return the gp ouputs (mean and variance) for each output dimension
+        Return the gp ouputs (mean and variance) for each output dimension for each test input
+
+        Args:
+        test_inputs (List[JAXArray]): A list containing the test inputs.
+
+        returns a tuple containing the means and covariances of the test inputs.
+
         """
-        predictive_moments = []
+        predictive_means = []
+        predictive_stds = []
         for i in range(self.num_outputs):
-            latent_dist = self.models[i].predict(test_inputs, train_data=self.data)
+            latent_dist = self.models[i].predict(
+                test_inputs,
+                train_data=gpx.Dataset(
+                    X=self.data.X, y=self.data.y[:, i].reshape(-1, 1)
+                ),
+            )
             predictive_dist = self.models[i].likelihood(latent_dist)
 
-            predictive_moments.append(
-                (predictive_dist.mean(), predictive_dist.stddev())
-            )
+            predictive_means.append(predictive_dist.mean())
+            predictive_stds.append(predictive_dist.stddev())
+        predictive_moments = jnp.stack(
+            (jnp.array(predictive_means).T, jnp.array(predictive_stds).T), axis=2
+        )
         return predictive_moments
