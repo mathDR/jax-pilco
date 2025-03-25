@@ -6,7 +6,7 @@ from dataclasses import replace
 config.update("jax_enable_x64", True)
 
 import gpjax as gpx
-import equinox as eqx
+from flax import nnx
 from jax import Array, grad, jit
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -20,7 +20,7 @@ def inverse_softplus(x):
     return jnp.log(jnp.exp(x) - 1.0)
 
 
-class DynamicalModel(eqx.Module):
+class DynamicalModel(nnx.Module):
     """The forward model of the system dynamics.
 
     Currently is a Multiple Gaussian Process regression with an independent GP for
@@ -36,12 +36,12 @@ class DynamicalModel(eqx.Module):
 
     """
 
-    data: gpx.Dataset = eqx.field(static=True)
+    data: gpx.Dataset
     mean_func: Optional[gpx.mean_functions] = None
-    name: Optional[str] = eqx.field(static=True)
-    num_outputs: int = eqx.field(static=True)
-    input_dimension: int = eqx.field(static=True)
-    num_datapoints: int = eqx.field(static=True)
+    name: Optional[str]
+    num_outputs: int
+    input_dimension: int
+    num_datapoints: int
     models: List[gpx.gps.ConjugatePosterior]
     optimizers: List[ox._src.base.GradientTransformationExtraArgs]
 

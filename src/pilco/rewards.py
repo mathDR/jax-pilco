@@ -1,11 +1,11 @@
-import equinox as eqx
+from flax import nnx
 import jax.numpy as jnp
 from jax import Array
 from jax.typing import ArrayLike
 from typing import Tuple
 
 
-class ExponentialReward(eqx.Module):
+class ExponentialReward(nnx.Module):
     """
     Compute expectation and variance, and their derivatives of an exponentiated negative quadratic cost
     exp( -(x-z).T * W * (x-z)/2 )
@@ -45,25 +45,28 @@ class ExponentialReward(eqx.Module):
         mu = state_mean - self.target_state
         eye_state_dim = jnp.eye(self.state_dim)
 
-        SW = jnp.dot(state_covariance, self.weight_matrix)
+        State_Covar_times_Weight = jnp.dot(state_covariance, self.weight_matrix)
 
         iSpW = jnp.transpose(
-            jnp.linalg.solve((eye_state_dim + SW), jnp.transpose(self.weight_matrix))
+            jnp.linalg.solve(
+                (eye_state_dim + State_Covar_times_Weight),
+                jnp.transpose(self.weight_matrix),
+            )
         )
 
         expected_reward = jnp.exp(
             -0.5 * jnp.dot(mu, jnp.dot(iSpW, jnp.transpose(mu)))
-        ) / jnp.sqrt(jnp.linalg.det(eye_state_dim + SW))
+        ) / jnp.sqrt(jnp.linalg.det(eye_state_dim + State_Covar_times_Weight))
 
         i2SpW = jnp.transpose(
             jnp.linalg.solve(
-                (eye_state_dim + 2 * SW),
+                (eye_state_dim + 2 * State_Covar_times_Weight),
                 jnp.transpose(self.weight_matrix),
             )
         )
 
         r2 = jnp.exp(-jnp.dot(mu, jnp.dot(i2SpW, jnp.transpose(mu)))) / jnp.sqrt(
-            jnp.linalg.det(eye_state_dim + 2 * SW)
+            jnp.linalg.det(eye_state_dim + 2 * State_Covar_times_Weight)
         )
 
         reward_variance = r2 - jnp.dot(state_mean, state_mean)

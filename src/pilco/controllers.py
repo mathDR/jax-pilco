@@ -1,4 +1,4 @@
-import equinox as eqx
+from flax import nnx
 import jax.numpy as jnp
 import jax.random as jr
 from jax import Array
@@ -6,7 +6,7 @@ from jax.typing import ArrayLike
 from typing import Generator, List, Optional
 
 
-class Controller(epx.Module):
+class Controller(nnx.Module):
     """
     Superclass of controller objects
     """
@@ -19,14 +19,12 @@ class Controller(epx.Module):
     def __init__(
         self,
         state_dim: int,
-        input_dim: int,
+        action_dim: int,
         to_squash: bool = False,
         max_action: float = 1.0,
     ):
-        super(Controller, self).__init__()
-        # model parameters
         self.state_dim = state_dim
-        self.input_dim = input_dim
+        self.action_dim = action_dim
         self.max_action = max_action
 
         # set squashing function
@@ -37,8 +35,8 @@ class Controller(epx.Module):
             self.f_squash = lambda x: x
 
     def compute_action(
-        self, states: ArrayLike, time_for_action: float, key: ArrayLike
-    ) -> Generator[float, None, None]:
+        self, states: ArrayLike, time_for_action: float, key: Optional[ArrayLike]
+    ) -> Array:
         raise NotImplementedError()
 
     def squashing(self, u: Array) -> ArrayLike:
@@ -54,30 +52,37 @@ class RandomController(Controller):
     def __init__(
         self,
         state_dim: int,
-        input_dim: int,
+        action_dim: int,
         to_squash: bool = False,
         max_action: float = 1.0,
     ):
-        super(Controller, self).__init__()
-        self.control_dim = control_dim
-        self.state_dim = state_dim
-        self.max_action = max_action
+        super().__init__(
+            state_dim,
+            action_dim,
+            to_squash,
+            max_action,
+        )
 
     def compute_action(
-        self, states: ArrayLike, time_for_action: float, key: Optional[ArrayLike]
-    ) -> Generator[float, None, None]:
+        self, states: ArrayLike, time_for_action: float, key: Optional[ArrayLike] = None
+    ) -> Array:
         """
         Simple random action
         IN: current state, time_for_action and key to use for random action
         OUT: the action value (uniform in (-max_action,+max_action))
         """
-        if key:
+        if key is not None:
             key, subkey = jr.split(key)
         else:
             key = jr.key(123)
             key, subkey = jr.split(key)
 
-        yield jr.uniform(subkey, minval=-self.max_action, maxval=self.max_action)
+        return jr.uniform(
+            subkey,
+            shape=(self.action_dim,),
+            minval=-self.max_action,
+            maxval=self.max_action,
+        )
 
 
 class Sum_of_Sinusoids(Controller):
